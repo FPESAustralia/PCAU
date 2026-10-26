@@ -288,7 +288,7 @@ if(sessionStorage.getItem('ec_auth')==='1'){
   </div>
   <div class="chart-row cols-2">
     <div class="chart-card"><h3>Suitability by Gender</h3><div class="chart-sub">Suitability % by gender (Jan – Sep 2026)</div><div class="chart-wrap"><canvas id="chartSuitGender"></canvas></div></div>
-    <div class="chart-card"><h3>Suitability by Age Group</h3><div class="chart-sub">All-time suitability % per age band</div><div class="chart-wrap"><canvas id="chartSuitAge"></canvas></div></div>
+    <div class="chart-card"><h3>Suitability by Age Group</h3><div class="chart-sub">Suitability % per age band (filtered view)</div><div class="chart-wrap"><canvas id="chartSuitAge"></canvas></div></div>
   </div>
 </div>
 
@@ -760,15 +760,23 @@ function renderAll(){
   dc('chartAge','bar',{labels:ageBands,datasets:[{label:'Count',data:ageVals,backgroundColor:TEAL,borderRadius:4}]},
     {plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const tot=ageVals.reduce((a,b)=>a+b,0);return ctx.parsed.y+' ('+pctOf(ctx.parsed.y,tot)+')';}}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef2f5'}}}});
   const gKeys=['Male','Female'];
-  const gSuitPct=gKeys.map(g=>RAW.genderSuit[g]?.suit_pct||0);
-  const gUnsuitPct=gKeys.map(g=>+(100-(RAW.genderSuit[g]?.suit_pct||0)).toFixed(1));
+  const gKeyMap={'Male':'male','Female':'female'};
+  const gSuitPct=gKeys.map(g=>RAW.genderSuit[gKeyMap[g]]?.suit_pct||0);
+  const gUnsuitPct=gKeys.map(g=>+(100-(RAW.genderSuit[gKeyMap[g]]?.suit_pct||0)).toFixed(1));
   dc('chartSuitGender','bar',{labels:gKeys,datasets:[
     {label:'Suitable',  data:gSuitPct,  backgroundColor:GREEN,stack:'g'},
     {label:'Unsuitable',data:gUnsuitPct,backgroundColor:RED,  stack:'g'},
-  ]},{plugins:{legend:{position:'top'},tooltip:{callbacks:{label:ctx=>{const g=gKeys[ctx.dataIndex];const d=RAW.genderSuit[g];return ctx.dataset.label==='Suitable'?'Suitable: '+d.suit+' ('+d.suit_pct+'%)':'Unsuitable: '+(d.total-d.suit)+' ('+(100-d.suit_pct).toFixed(1)+'%)';}}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,min:0,max:100,ticks:{callback:v2=>v2+'%'}}}});
-  const ageSuitData=RAW.ageSuitRates||ageSuitRates;
+  ]},{plugins:{legend:{position:'top'},tooltip:{callbacks:{label:ctx=>{const g=gKeyMap[gKeys[ctx.dataIndex]];const d=RAW.genderSuit[g];return ctx.dataset.label==='Suitable'?'Suitable: '+d.suit+' ('+d.suit_pct+'%)':'Unsuitable: '+(d.total-d.suit)+' ('+(100-d.suit_pct).toFixed(1)+'%)';}}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,min:0,max:100,ticks:{callback:v2=>v2+'%'}}}});
+  // Age suitability — computed from filtered month buckets (month suit_pct × age count)
+  const ageSuitTotals={},ageSuitSuits={};
+  ageBands.forEach(b=>{ageSuitTotals[b]=0;ageSuitSuits[b]=0;});
+  monthBuckets.forEach(bkt=>{
+    if(!bkt||!bkt.total)return;
+    ageBands.forEach(b=>{const n=bkt.age?.[b]||0;ageSuitTotals[b]+=n;ageSuitSuits[b]+=Math.round(n*(bkt.suit_pct||0)/100);});
+  });
+  const ageSuitData=ageBands.map(b=>ageSuitTotals[b]?+(ageSuitSuits[b]/ageSuitTotals[b]*100).toFixed(1):0);
   dc('chartSuitAge','bar',{labels:ageBands,datasets:[{label:'Suit %',data:ageSuitData,backgroundColor:ageSuitData.map(r=>r>=95?GREEN:r>=85?AMBER:RED),borderRadius:4}]},
-    {plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{min:0,max:100,grid:{color:'#eef2f5'},ticks:{callback:v2=>v2+'%'}}}});
+    {plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const b=ageBands[ctx.dataIndex];return 'Suit: '+ageSuitSuits[b]+'/'+ageSuitTotals[b]+' ('+ctx.parsed.y+'%)';}}}},scales:{x:{grid:{display:false}},y:{min:0,max:100,grid:{color:'#eef2f5'},ticks:{callback:v2=>v2+'%'}}}});
 
   // ── POSITIONS ──
   const top10=filtPosList.slice(0,10);
